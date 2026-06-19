@@ -67,3 +67,15 @@
 	/*position: static;*/
 	display: inline-block;
 }
+
+#Market #MarketBody .needed-research-good {
+	color: #ff9800;
+}
+
+#Market #MarketBody .producible-good {
+	color: #4caf50;
+}
+
+#Market #MarketBody .producible-good.needed-research-good {
+	color: #4caf50;
+}
