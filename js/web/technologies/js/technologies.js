@@ -474,6 +474,8 @@ let Technologies = {
      *   `Technologies.IgnoreCurrentEraOptional` is true.
      */
     CalcBody: ()=> {
+        if (Technologies.AllTechnologies === null || Technologies.UnlockedTechnologies === false) return;
+
         let h = [],
             TechDict = [];
 
@@ -498,6 +500,7 @@ let Technologies = {
         for (let i = 0; i < Technologies.UnlockedTechnologies['inProgressTechnologies'].length; i++) {
             let InProgTech = Technologies.UnlockedTechnologies['inProgressTechnologies'][i];
             let Index = TechDict[InProgTech['tech_id']];
+            if (Index === undefined) continue;
             Technologies.AllTechnologies[Index]['currentSP'] = InProgTech['currentSP'];
         }
 
@@ -523,7 +526,7 @@ let Technologies = {
             let EraID = Technologies.Eras[Tech['era']];
 
             // Aktuelles/zukünftiges ZA und optionale Technologie ausblenden
-            if (EraID >= CurrentEraID && Tech['children'].length === 0 && Technologies.IgnoreCurrentEraOptional) {
+            if (EraID >= CurrentEraID && (Tech['children'] || []).length === 0 && Technologies.IgnoreCurrentEraOptional) {
                 continue;
             }
 
