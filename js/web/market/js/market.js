@@ -626,111 +626,104 @@ let Market = {
 
     /**
      * Returns a Set of good IDs that the player can produce themselves.
+     * Only considers goods buildings that are actually placed in the player's city.
+     * For each goods building, reads the specific good it produces from
+     * available_products in the entity metadata.
      */
     GetProducibleGoods: () => {
         let producibleGoods = new Set();
 
+        // Check CityBuildingsData (player's own processed buildings)
         for (let buildingId in MainParser.CityBuildingsData) {
             if (!MainParser.CityBuildingsData.hasOwnProperty(buildingId)) continue;
 
             let building = MainParser.CityBuildingsData[buildingId];
-            if (!building.production) continue;
 
-            for (let production of building.production) {
-                if (production.type === 'resources' || production.type === 'special_goods') {
-                    if (production.resources) {
-                        for (let resourceName of Object.keys(production.resources)) {
-                            if (GoodsData[resourceName]) {
-                                producibleGoods.add(resourceName);
-                            }
-                            // Handle random_good_of_ and all_goods_of_ patterns
-                            if (resourceName.includes('random_good_of_') || resourceName.includes('all_goods_of_')) {
-                                let eraPart = resourceName.replace('random_good_of_', '').replace('all_goods_of_', '');
-                                let eraId = Technologies.Eras[eraPart];
-                                if (eraId !== undefined) {
-                                    for (let i = 0; i < 5; i++) {
-                                        let goodIndex = eraId * 5 - 5 + i;
-                                        if (goodIndex >= 0 && goodIndex < GoodsList.length) {
-                                            producibleGoods.add(GoodsList[goodIndex].id);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                if (production.type === 'random') {
-                    if (production.resources) {
-                        for (let resource of production.resources) {
-                            if (resource.type?.includes('good') && !resource.type?.includes('guild')) {
-                                let goodEra = Technologies.InnoEras[building.eraName];
-                                if (resource.type.includes('previous') || resource.subType?.toLowerCase().includes('previous') || resource.id?.toLowerCase().includes('previous'))
-                                    goodEra = Technologies.getPreviousEraIdByCurrentEraName(building.eraName);
-                                else if (resource.type.includes('next') || resource.subType?.toLowerCase().includes('next') || resource.id?.toLowerCase().includes('next'))
-                                    goodEra = Technologies.getNextEraIdByCurrentEraName(building.eraName);
-                                else
-                                    goodEra = Technologies.getEraIdByCurrentEraName(building.eraName);
-
-                                for (let i = 0; i < 5; i++) {
-                                    let goodIndex = goodEra * 5 - 5 + i;
-                                    if (goodIndex >= 0 && goodIndex < GoodsList.length) {
-                                        producibleGoods.add(GoodsList[goodIndex].id);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Also check state.production (currently running productions)
-            if (building.state && building.state.production) {
-                for (let production of building.state.production) {
-                    if (production.type === 'resources' || production.type === 'special_goods') {
+            if (building.type === 'goods') {
+                // Read specific good from production data
+                if (building.production) {
+                    for (let production of building.production) {
                         if (production.resources) {
                             for (let resourceName of Object.keys(production.resources)) {
-                                if (GoodsData[resourceName]) {
+                                if (GoodsData[resourceName] && GoodsData[resourceName].abilities?.goodsProduceable !== undefined) {
                                     producibleGoods.add(resourceName);
                                 }
                             }
                         }
                     }
                 }
-            }
+                if (building.state && building.state.production) {
+                    for (let production of building.state.production) {
+                        if (production.resources) {
+                            for (let resourceName of Object.keys(production.resources)) {
+                                if (GoodsData[resourceName] && GoodsData[resourceName].abilities?.goodsProduceable !== undefined) {
+                                    producibleGoods.add(resourceName);
+                                }
+                            }
+                        }
+                    }
+                }
 
-            // Check entity type for goods buildings - they produce 5 goods of their era
-            if (building.type === 'goods') {
-                let eraId = Technologies.InnoEras[building.eraName];
-                if (eraId !== undefined) {
-                    for (let i = 0; i < 5; i++) {
-                        let goodIndex = eraId * 5 - 5 + i;
-                        if (goodIndex >= 0 && goodIndex < GoodsList.length) {
-                            producibleGoods.add(GoodsList[goodIndex].id);
+                // Fallback: use available_products from CityEntities metadata
+                if (!building.production && !(building.state && building.state.production)) {
+                    let entity = MainParser.CityEntities[building.entityId];
+                    if (entity && entity.available_products && Array.isArray(entity.available_products)) {
+                        for (let product of entity.available_products) {
+                            if (product.product && product.product.resources) {
+                                for (let resourceName of Object.keys(product.product.resources)) {
+                                    if (GoodsData[resourceName] && GoodsData[resourceName].abilities?.goodsProduceable !== undefined) {
+                                        producibleGoods.add(resourceName);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
-        // Also check raw CityMapData for goods buildings that might not be in CityBuildingsData yet
+        // Also check raw CityMapData for goods buildings (only own buildings)
         for (let buildingId in MainParser.CityMapData) {
             if (!MainParser.CityMapData.hasOwnProperty(buildingId)) continue;
 
             let building = MainParser.CityMapData[buildingId];
             if (!building || !building.cityentity_id) continue;
 
+            // Only count buildings belonging to the player
+            if (building.player_id !== undefined && building.player_id !== ExtPlayerID) continue;
+
             let entity = MainParser.CityEntities[building.cityentity_id];
             if (!entity) continue;
 
             if (entity.type === 'goods') {
-                let eraName = entity.requirements?.min_era;
-                if (eraName) {
-                    let eraId = Technologies.InnoEras[eraName];
-                    if (eraId !== undefined) {
-                        for (let i = 0; i < 5; i++) {
-                            let goodIndex = eraId * 5 - 5 + i;
-                            if (goodIndex >= 0 && goodIndex < GoodsList.length) {
-                                producibleGoods.add(GoodsList[goodIndex].id);
+                // Use available_products from entity metadata
+                if (entity.available_products && Array.isArray(entity.available_products)) {
+                    for (let product of entity.available_products) {
+                        if (product.product && product.product.resources) {
+                            for (let resourceName of Object.keys(product.product.resources)) {
+                                if (GoodsData[resourceName] && GoodsData[resourceName].abilities?.goodsProduceable !== undefined) {
+                                    producibleGoods.add(resourceName);
+                                }
+                            }
+                        }
+                    }
+                }
+                // Also check current_product if building is producing
+                if (building.state && building.state.current_product && building.state.current_product.product && building.state.current_product.product.resources) {
+                    for (let resourceName of Object.keys(building.state.current_product.product.resources)) {
+                        if (GoodsData[resourceName] && GoodsData[resourceName].abilities?.goodsProduceable !== undefined) {
+                            producibleGoods.add(resourceName);
+                        }
+                    }
+                }
+                // Also check productionOption
+                if (building.state && building.state.productionOption && building.state.productionOption.products) {
+                    for (let product of building.state.productionOption.products) {
+                        if (product.playerResources && product.playerResources.resources) {
+                            for (let resourceName of Object.keys(product.playerResources.resources)) {
+                                if (GoodsData[resourceName] && GoodsData[resourceName].abilities?.goodsProduceable !== undefined) {
+                                    producibleGoods.add(resourceName);
+                                }
                             }
                         }
                     }
